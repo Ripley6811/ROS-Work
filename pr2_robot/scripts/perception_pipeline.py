@@ -234,8 +234,6 @@ class ObjectFinder(object):
         pubs[DETECTED_OBJECTS].publish(detected_objects)
 
         
-        
-        
         # Suggested location for where to invoke your pr2_mover() function within pcl_callback()
         # Could add some logic to determine whether or not your object detections are robust
         # before calling pr2_mover()

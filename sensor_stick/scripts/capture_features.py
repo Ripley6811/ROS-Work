@@ -10,7 +10,6 @@ from sensor_stick.training_helper import initial_setup
 from sensor_stick.training_helper import capture_sample
 from sensor_stick.features import compute_color_histograms
 from sensor_stick.features import compute_normal_histograms
-from sensor_stick.features import get_feature
 from sensor_stick.srv import GetNormals
 from geometry_msgs.msg import Pose
 from sensor_msgs.msg import PointCloud2
@@ -33,6 +32,8 @@ def get_feature(cloud):
 if __name__ == '__main__':
     rospy.init_node('capture_node')
 
+    """
+    # Original Sensor-stick exercise models
     models = [\
        'beer',
        'bowl',
@@ -41,6 +42,17 @@ if __name__ == '__main__':
        'hammer',
        'plastic_cup',
        'soda_can']
+    """
+    # PR2 Robot Project models
+    models = [\
+       'sticky_notes',
+       'book',
+       'snacks',
+       'biscuits',
+       'eraser',
+       'soap2',
+       'soap',
+       'glue']
     
     try:    
         delete_model()
@@ -50,7 +62,7 @@ if __name__ == '__main__':
     # Disable gravity and delete the ground plane
     initial_setup()
     labeled_features = []
-    n_iterations = 12
+    n_iterations = 50
 
     for model_name in models:
         spawn_model(model_name)
@@ -74,7 +86,7 @@ if __name__ == '__main__':
                     sample_was_good = True
 
             # Extract histogram features
-            feature = get_feature(cloud)
+            feature = get_feature(sample_cloud)
             labeled_features.append([feature, model_name])
 
         delete_model()
