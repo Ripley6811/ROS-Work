@@ -91,6 +91,9 @@ PCL_TABLE = "/pcl_table"
 PCL_CLUSTER = "/pcl_cluster"
 OBJECT_MARKERS = "/object_markers"
 DETECTED_OBJECTS = "/detected_objects"
+OBJECT_LIST = "/object_list"
+DROPBOXES = "/dropbox"
+TEST_SCENE_NUM = rospy.get_param("/test_scene_num")
 pubs = {
     PCL_OBJECTS: rospy.Publisher(PCL_OBJECTS, PointCloud2, queue_size=1),
     PCL_TABLE: rospy.Publisher(PCL_TABLE, PointCloud2, queue_size=1),
@@ -120,14 +123,14 @@ class ObjectFinder(object):
         # Statistical Outlier Filtering
         outlier_filter = cloud.make_statistical_outlier_filter()
         outlier_filter.set_mean_k(50)
-        x = 0.001  # 0.2 is already much better than 1.0
+        x = 0.0001  # 0.2 is already much better than 1.0
         outlier_filter.set_std_dev_mul_thresh(x)
         cloud_filtered = outlier_filter.filter()
         
 
         # Voxel Grid Downsampling
         vox = cloud_filtered.make_voxel_grid_filter()
-        LEAF_SIZE = 0.006
+        LEAF_SIZE = 0.004
         vox.set_leaf_size(LEAF_SIZE, LEAF_SIZE, LEAF_SIZE)
         cloud_filtered = vox.filter()
 
@@ -233,7 +236,9 @@ class ObjectFinder(object):
         # Publish the list of detected objects
         pubs[DETECTED_OBJECTS].publish(detected_objects)
 
+        write_yaml(detected_objects)
         
+        """
         # Suggested location for where to invoke your pr2_mover() function within pcl_callback()
         # Could add some logic to determine whether or not your object detections are robust
         # before calling pr2_mover()
@@ -241,19 +246,70 @@ class ObjectFinder(object):
             pr2_mover(detected_objects)
         except rospy.ROSInterruptException:
             pass
+        """
             
-            
+def write_yaml(detected_objects):
+    labels = [item.label for item in detected_objects]
+    centroids = [get_cloud_center(item.cloud) for item in detected_objects]
+    
+    # Get/Read parameters
+    pick_list = rospy.get_param(OBJECT_LIST)
+    
+    # Dropbox info organized by group
+    dropboxes = {_['group']: (_['name'],_['position']) for _ in rospy.get_param(DROPBOXES)}
+    
+    # Messages to hold data
+    test_scene_num = Int32()
+    test_scene_num.data = TEST_SCENE_NUM
+    object_name = String()
+    arm_name = String()
+    pick_pose = Pose()
+    place_pose = Pose()
+    
+    dict_list = []
+    for list_item in pick_list:
+        name, group = list_item['name'], list_item['group']
+        # Continue if object not seen.
+        try:
+            centroid = centroids[labels.index(name)]
+        except ValueError:
+            continue
+        
+        object_name.data = name
+        arm_name.data = dropboxes[group][0]
+        pick_pose.position.x, \
+        pick_pose.position.y, \
+        pick_pose.position.z = [np.asscalar(_) for _ in centroid]
+        place_pose.position.x, \
+        place_pose.position.y, \
+        place_pose.position.z = dropboxes[group][1]
+        
+        dict_list.append(make_yaml_dict(test_scene_num, 
+                                        arm_name, 
+                                        object_name, 
+                                        pick_pose, 
+                                        place_pose))
+    
+    print ""
+    print dict_list
+    send_to_yaml("output_{}.yaml".format(TEST_SCENE_NUM), dict_list)
+
+
+def get_cloud_center(cloud):
+    # Convert cloud points to array and return mean of x,y,z.
+    return np.mean(ros_to_pcl(cloud).to_array(), axis=0)[:3]
 
 # function to load parameters and request PickPlace service
-def pr2_mover(object_list):
-    return
-    # TODO: Initialize variables
+def pr2_mover(detected_objects):
+    pass
+    # Get/Read parameters
+    
 
-    # TODO: Get/Read parameters
-
-    # TODO: Parse parameters into individual variables
+    # Parse parameters into individual variables
+   
 
     # TODO: Rotate PR2 in place to capture side tables for the collision map
+    
 
     # TODO: Loop through the pick list
 
