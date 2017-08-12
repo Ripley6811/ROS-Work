@@ -62,7 +62,7 @@ if __name__ == '__main__':
     # Disable gravity and delete the ground plane
     initial_setup()
     labeled_features = []
-    n_iterations = 50
+    n_iterations = 100
 
     for model_name in models:
         spawn_model(model_name)
@@ -70,11 +70,11 @@ if __name__ == '__main__':
 
         for i in range(n_iterations):
             # make five attempts to get a valid a point cloud then give up
-            print i,
+            print i+1,
             sample_was_good = False
             try_count = 0
             while not sample_was_good and try_count < 5:
-                print try_count
+                print "(try {})".format(try_count + 1),
                 sample_cloud = capture_sample()
                 sample_cloud_arr = ros_to_pcl(sample_cloud).to_array()
 

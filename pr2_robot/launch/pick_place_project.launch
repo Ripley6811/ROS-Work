@@ -1,6 +1,6 @@
 <launch>
   <!--TODO:Change the test number based on the scene you want loaded-->
-  <arg name="test_scene_num" value="2"/>
+  <arg name="test_scene_num" value="3"/>
   
   <!--Include description and control launch files-->
   <include file="$(find pr2_robot)/launch/robot_description.launch"/>
@@ -12,7 +12,6 @@
 
   <!--Launch a gazebo world-->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
-    <!--TODO:Change the world name to load different tabletop setup-->
     <arg name="world_name" value="$(find pr2_robot)/worlds/test$(arg test_scene_num).world"/>
     <arg name="use_sim_time" value="true"/>
     <arg name="paused" value="false"/>

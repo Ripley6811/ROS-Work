@@ -2,6 +2,8 @@
 
 # Import modules
 import numpy as np
+import random
+from collections import Counter
 import sklearn
 from sklearn.preprocessing import LabelEncoder
 import pickle
@@ -55,7 +57,7 @@ def get_feature(cloud):
     return feature
     
     
-def find_clusters(objects_cloud, tolerance=0.05, min_size=20, max_size=2500):
+def find_clusters(objects_cloud, tolerance=0.05, min_size=20, max_size=20000):
     """Euclidean Clustering"""
     # Remove color and cluster by distance only.
     white_cloud = XYZRGB_to_XYZ(objects_cloud)
@@ -79,6 +81,7 @@ def create_cluster_point_cloud(objects_cloud, cluster_indices):
         new_color = rgb_to_float(cluster_color[i])
         # objects_cloud[index] is a length four tuple: (x,y,z,rgb_float)
         points = [list(objects_cloud[index])[:3] + [new_color] for index in indices]
+        print "{} has {} points".format(i, len(points))
         color_cluster_point_list.extend(points)
     cluster_cloud = pcl.PointCloud_PointXYZRGB()
     cluster_cloud.from_list(color_cluster_point_list)
@@ -113,26 +116,41 @@ class ObjectFinder(object):
         
         self.filter_noise = filter_noise
         
+        self.last_cloud_objects = None
+        
        
     def pcl_callback(self, pcl_msg):
-
+        print "=================="
+        print "PCL CALLBACK START"
 
         # Convert ROS msg to PCL data
         cloud = ros_to_pcl(pcl_msg)
+        
     
         # Statistical Outlier Filtering
-        outlier_filter = cloud.make_statistical_outlier_filter()
-        outlier_filter.set_mean_k(50)
-        x = 0.0001  # 0.2 is already much better than 1.0
-        outlier_filter.set_std_dev_mul_thresh(x)
-        cloud_filtered = outlier_filter.filter()
+        STAT_MEAN_K = rospy.get_param('/filter/stat_mean_k', 20)
+        print "'/filter/stat_mean_k' = {}".format(STAT_MEAN_K)
+        STAT_THRESH = rospy.get_param('/filter/stat_thresh', 0.005)  # 0.2 is already much better than 1.0
+        print "'/filter/stat_thresh' = {}".format(STAT_THRESH)
+        if STAT_MEAN_K > 0 and STAT_THRESH > 0.0:
+            outlier_filter = cloud.make_statistical_outlier_filter()
+            outlier_filter.set_mean_k(STAT_MEAN_K)
+            outlier_filter.set_std_dev_mul_thresh(STAT_THRESH)
+            cloud_filtered = outlier_filter.filter()
+        else:
+            print "  - Skipping statistical outlier filtering"
         
-
         # Voxel Grid Downsampling
-        vox = cloud_filtered.make_voxel_grid_filter()
-        LEAF_SIZE = 0.004
-        vox.set_leaf_size(LEAF_SIZE, LEAF_SIZE, LEAF_SIZE)
-        cloud_filtered = vox.filter()
+        LEAF_SIZE = rospy.get_param('/filter/voxel_leaf', 0.007)
+        print "'/filter/voxel_leaf' = {}".format(LEAF_SIZE)
+        if LEAF_SIZE > 0.0:
+            vox = cloud_filtered.make_voxel_grid_filter()
+            vox.set_leaf_size(LEAF_SIZE, LEAF_SIZE, LEAF_SIZE)
+            cloud_filtered = vox.filter()
+        else:
+            print "  - Skipping voxel grid downsampling"
+            
+        
 
         # PassThrough Filter - X
         passthrough = cloud_filtered.make_passthrough_filter()
@@ -168,19 +186,34 @@ class ObjectFinder(object):
         max_distance = 0.01
         seg.set_distance_threshold(max_distance)
         inliers, coefficients = seg.segment()
-        print coefficients
 
         # Extract inliers and outliers
         extracted_inliers = cloud_filtered.extract(inliers, negative=False)
         extracted_objects = cloud_filtered.extract(inliers, negative=True)
 
         # Statistical Outlier Filtering
-        outlier_filter = extracted_objects.make_statistical_outlier_filter()
-        outlier_filter.set_mean_k(50)
-        x = 0.001  # 0.2 is already much better than 1.0
-        outlier_filter.set_std_dev_mul_thresh(x)
-        extracted_objects = outlier_filter.filter()
+        # Do again to remove remaining bits of the table
+        STAT_MEAN_K_2 = rospy.get_param('/filter/stat_mean_k_2', 30)
+        print "'/filter/stat_mean_k_2' = {}".format(STAT_MEAN_K_2)
+        STAT_THRESH_2 = rospy.get_param('/filter/stat_thresh_2', 0.4)  # 0.2 is already much better than 1.0
+        print "'/filter/stat_thresh_2' = {}".format(STAT_THRESH_2)
+        if STAT_MEAN_K_2 > 0 and STAT_THRESH_2 > 0.0:
+            outlier_filter = extracted_objects.make_statistical_outlier_filter()
+            outlier_filter.set_mean_k(STAT_MEAN_K_2)
+            outlier_filter.set_std_dev_mul_thresh(STAT_THRESH_2)
+            extracted_objects = outlier_filter.filter()
+        else:
+            print "  - Skipping 2ND statistical outlier filtering"
         
+            
+        if self.last_cloud_objects:
+            new_cloud = pcl.PointCloud_PointXYZRGB()
+            merged_list = extracted_objects.to_list() + self.last_cloud_objects.to_list()
+            new_cloud.from_list(merged_list)
+            extracted_objects = new_cloud
+            print "New cloud merged with old"
+        
+        #self.last_cloud_objects = extracted_objects
         
         #####################
         ## Finding clusters
@@ -207,17 +240,32 @@ class ObjectFinder(object):
         detected_objects_labels = []
         detected_objects = []
         # Publish the list of detected objects
+        
+        counter_size = rospy.get_param('/predict/iterations', 50)
+        sample_size = rospy.get_param('/predict/sample_size', 30)
+        print "'/predict/sample_size' = {}".format(sample_size)
+        print "'/predict/iterations' = {}".format(counter_size)
         for index, pts_list in enumerate(cluster_indices):
             # Grab the points for the cluster from the extracted outliers (cloud_objects)
-            ros_cloud = pcl_to_ros(extracted_objects.extract(pts_list))
+            object_cloud = extracted_objects.extract(pts_list)
+            c_size = object_cloud.size
+            
+            mode_list = []
+            for i in range(counter_size):
+                indices = random.sample(range(c_size), min(sample_size, c_size))
+                subset_cloud = object_cloud.extract(indices)
+                ros_cloud = pcl_to_ros(subset_cloud)  # to sensor_msgs.msg._PointCloud2.PointCloud2
 
-            # Extract histogram features
-            feature = get_feature(ros_cloud)
+                # Extract histogram features
+                feature = get_feature(ros_cloud)
 
-            # Make the prediction, retrieve the label for the result
-            # and add it to detected_objects_labels list
-            prediction = self.clf.predict(self.scaler.transform(feature.reshape(1,-1)))
-            label = self.encoder.inverse_transform(prediction)[0]
+                # Make the prediction, retrieve the label for the result
+                # and add it to detected_objects_labels list
+                prediction = self.clf.predict(self.scaler.transform(feature.reshape(1,-1)))
+                mode_list.append(prediction[0])
+            print Counter(mode_list).most_common(2)
+            prediction = Counter(mode_list).most_common(1)[0][0]
+            label = self.encoder.inverse_transform(prediction)
             detected_objects_labels.append(label)
 
             # Add the detected object to the list of detected objects.
@@ -247,6 +295,7 @@ class ObjectFinder(object):
         except rospy.ROSInterruptException:
             pass
         """
+        print "------------------"
             
 def write_yaml(detected_objects):
     labels = [item.label for item in detected_objects]
@@ -290,8 +339,6 @@ def write_yaml(detected_objects):
                                         pick_pose, 
                                         place_pose))
     
-    print ""
-    print dict_list
     send_to_yaml("output_{}.yaml".format(TEST_SCENE_NUM), dict_list)
 
 

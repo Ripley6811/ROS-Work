@@ -76,15 +76,13 @@ pubs = {
 
        
 class ObjectFinder(object):
-    def __init__(self, filter_noise=False):        
+    def __init__(self):        
         model = pickle.load(open('model.sav', 'rb'))
         self.clf = model['classifier']
         self.encoder = LabelEncoder()
         self.encoder.classes_ = model['classes']
         self.scaler = model['scaler']
-        
-        self.filter_noise = filter_noise
-        
+               
        
     def pcl_callback(self, pcl_msg):
         # Convert ROS msg to PCL data
@@ -92,11 +90,7 @@ class ObjectFinder(object):
 
         #####################
         ## Filtering for objects on table
-        #####################
-        if self.filter_noise:
-            # Statistical Outlier Filtering
-            pass
-        
+        #####################        
         # Voxel Grid Downsampling
         vox = cloud.make_voxel_grid_filter()
         LEAF_SIZE = 0.006
