@@ -1,6 +1,6 @@
 <launch>
   <!--TODO:Change the test number based on the scene you want loaded-->
-  <arg name="test_scene_num" value="3"/>
+  <arg name="test_scene_num" value="1"/>
   
   <!--Include description and control launch files-->
   <include file="$(find pr2_robot)/launch/robot_description.launch"/>

@@ -41,24 +41,9 @@ def compute_color_histograms(cloud, using_hsv=False, bins=32, range=(0, 256)):
     # Concatenate and normalize the histograms
     hist_features = np.concatenate((ch1_hist, ch2_hist, ch3_hist))
     normed_features = hist_features.astype('float') / np.sum(hist_features)
-    
-    #print type(normed_features), normed_features.dtype, normed_features
-    #fig = plt.figure(figsize=(12,6))
-    #plt.plot(normed_features)
-    #plt.title('HSV Feature Vector', fontsize=30)
-    #plt.tick_params(axis='both', which='major', labelsize=20)
-    #fig.tight_layout()
-    #plt.show()
 
     return normed_features 
     
-    """
-    img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-    hists = [np.histogram(img_hsv[:,:,i], bins=nbins, range=bins_range)[0] for i in [0,1,2]]
-    hist_features = np.concatenate((hists[0], hists[1], hists[2]))
-    norm_features = hist_features / np.sum(hist_features)
-    return norm_features
-    """
 
 
 def compute_normal_histograms(normal_cloud, bins=32, range=(-1.0, 1.0)):
